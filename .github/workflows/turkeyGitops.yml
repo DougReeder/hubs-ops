@@ -76,13 +76,26 @@ jobs:
         uses: docker/setup-buildx-action@v1
         with:
           install: true
+      - name: docker build
+        uses: docker/build-push-action@v6
+        with:
+          context: repo/
+          file: repo/${{ inputs.dockerfile }}
+          tags: ${{ inputs.registry }}/${{ github.workflow }}:latest,${{ inputs.registry }}/${{ github.workflow }}:${{ github.run_number }}
+          cache-from: type=registry,ref=${{ inputs.registry }}/${{ github.workflow }}:buildcache
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+            ENV=${{ inputs.docker_args-env }}
+            CONTENTFUL_TOKEN_b64=$${{ secrets.docker_args-contentful_token_b64 }}
       - name: docker login
+        if: ${{ github.repository_owner == 'Hubs-Foundation' }}
         uses: docker/login-action@v1
         with:
           username: ${{ inputs.DOCKER_HUB_USR }}
           password: ${{ secrets.DOCKER_HUB_PWD }}
-      - name: docker build(x) push
-        uses: docker/build-push-action@v2
+      - name: docker push
+        if: ${{ github.repository_owner == 'Hubs-Foundation' }}
+        uses: docker/build-push-action@v6
         with:
           context: repo/
           file: repo/${{ inputs.dockerfile }}
@@ -116,7 +129,7 @@ jobs:
   #         sudo gcloud auth activate-service-account turkeygitops-sa@hubs-dev-333333.iam.gserviceaccount.com --key-file=./key.json
   #         sudo gcloud auth configure-docker -q gcr.io
   #         sudo docker push $toTag
-  
+
   # An official Hubs instance isn't currently set up as of 2024-09-08
   # so commenting out dev_deploy_personal for now.
   # dev_deploy_personal:
@@ -141,9 +154,9 @@ jobs:
   #         deployTag=${{ inputs.registry }}/${{ github.workflow }}:${{ github.run_number }}
   #         echo "[info] deploying $deployTag to ns: $nsName, deployment: $deploymentName, container: $containerName"
   #         kubectl -n $nsName set image deployment/$deploymentName $containerName=$deployTag || true
-          
+
   tag_dev:
-    if: ${{ inputs.docker_args-env != 'prod' && github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+    if: ${{ (inputs.docker_args-env != 'prod' && github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.repository_owner == 'Hubs-Foundation' }}
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -185,9 +198,9 @@ jobs:
   #           sudo gcloud auth activate-service-account turkeygitops-sa@hubs-dev-333333.iam.gserviceaccount.com --key-file=./key.json
   #           sudo gcloud auth configure-docker -q gcr.io
   #           sudo docker push $toTag
-          
+
   tag_beta:
-    if: ${{ inputs.docker_args-env != 'dev' && github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/') }}
+    if: ${{ (inputs.docker_args-env != 'dev' && github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')) && github.repository_owner == 'Hubs-Foundation' }}
     runs-on: ubuntu-latest
     needs: build
     environment: staging
@@ -204,7 +217,7 @@ jobs:
           toTag=${{ inputs.registry }}/${{ github.workflow }}:beta-latest
           echo "[info] promoting :$fromTag to :$toTag"
           sudo docker pull $fromTag && sudo docker tag $fromTag $toTag && sudo docker push $toTag  
-  
+
   # Google Container Registry isn't currently set up as of 2024-09-08
   # so commenting out tag_beta_gcr for now.
   #   tag_beta_gcr:
@@ -226,9 +239,9 @@ jobs:
   #           sudo gcloud auth activate-service-account turkeygitops-sa@hubs-dev-333333.iam.gserviceaccount.com --key-file=./key.json
   #           sudo gcloud auth configure-docker -q gcr.io
   #           sudo docker push $toTag
-          
+
   tag_stable:
-    if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/') }}
+    if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')) && github.repository_owner == 'Hubs-Foundation' }}
     runs-on: ubuntu-latest
     needs: tag_beta
     environment: prod
@@ -285,7 +298,7 @@ jobs:
   #         echo "pkgNameRaw: $pkgNameRaw"
   #         echo $pkgNameRaw | sed -rn 's~.*(mozillareality\/.*)~\1~p' > bioPkgName
   #         echo "bioPkgName: " && cat bioPkgName
-          
+
   #     - name: Upload bioPkgName
   #       uses: actions/upload-artifact@v3
   #       with:
@@ -312,7 +325,7 @@ jobs:
   #         echo "[info] getting bio from: $dl" && curl -L -o bio.gz $dl && tar -xf bio.gz && ./bio --version
   #         echo "[info] releasing <$pkg> to <${{ inputs.qa_channel_name }}>"
   #         export HAB_BLDR_URL="https://bldr.reticulum.io"
-  #         export HAB_AUTH_TOKEN=${{ secrets. BLDR_RET_TOKEN}}                    
+  #         export HAB_AUTH_TOKEN=${{ secrets. BLDR_RET_TOKEN}}
   #         ./bio pkg promote $pkg ${{ inputs.qa_channel_name }}
   # hc_release_stable:
   #   name: HC production release
